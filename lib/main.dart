@@ -4,27 +4,23 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:mqtt_client/mqtt_client.dart';
-import 'package:mqtt_client/mqtt_server_client.dart';
+import 'package:nptt/mqtt_npx_client/_exp.dart';
 
-const MQTT_AUTH_USERNAME = "USERNAME";
-const MQTT_AUTH_PASSWORD = "PASSWORD";
-const MQTT_HOST = "HOST";
-// MQTT_CLIENT_ID=
-// MQTT_PRINTER_NAME=testing
-const MQTT_TOPIC_NAME = "TOPIC";
+const MQTT_AUTH_USERNAME = "qrorder_server";
+const MQTT_AUTH_PASSWORD = "123456";
+const MQTT_HOST = "wss://157.245.198.209";
+const MQTT_PRINTER_NAME = "P80B-202005250001";
 // MQTT_LAST_WILL_TOPIC
 void main() {
-  final client = MqttServerClient(MQTT_HOST, '')
+  final client = MqttNpxClient.instance.clientWithPort(MQTT_HOST, '', 8080)
     ..logging(on: true)
-    ..setProtocolV311()
-    ..keepAlivePeriod = 20
-    ..connectTimeoutPeriod = 2000;
+    ..setProtocolV311();
 
   runApp(MyApp(client: client));
 }
 
 class MyApp extends StatelessWidget {
-  final MqttServerClient client;
+  final MqttClient client;
   const MyApp({super.key, required this.client});
 
   // This widget is the root of your application.
@@ -44,7 +40,7 @@ class MyApp extends StatelessWidget {
 }
 
 class MyHomePage extends StatefulWidget {
-  final MqttServerClient client;
+  final MqttClient client;
   const MyHomePage({
     super.key,
     required this.client,
@@ -88,15 +84,19 @@ class _MyHomePageState extends State<MyHomePage> {
 
     if (widget.client.connectionStatus?.state ==
         MqttConnectionState.connected) {
-      widget.client.subscribe(MQTT_TOPIC_NAME, MqttQos.exactlyOnce);
+      widget.client.subscribe(MQTT_PRINTER_NAME, MqttQos.exactlyOnce);
       connectionNotifier.value = "Connected to $MQTT_HOST";
+      progressNotifier.value = 0;
     } else {
+      connectionNotifier.value = "";
+      progressNotifier.value = 0;
       errorMessageNotifier.value = error;
     }
-    progressNotifier.value = 0;
   }
 
   void disconnect() {
+    errorMessageNotifier.value = "";
+    connectionNotifier.value = "---";
     if (widget.client.connectionStatus?.state !=
         MqttConnectionState.disconnected) {
       progressNotifier.value = 1;
@@ -116,7 +116,7 @@ class _MyHomePageState extends State<MyHomePage> {
     payloadBuilder.addString(message);
     if (payloadBuilder.payload != null) {
       widget.client.publishMessage(
-        MQTT_TOPIC_NAME,
+        MQTT_PRINTER_NAME,
         MqttQos.exactlyOnce,
         payloadBuilder.payload!,
       );
@@ -180,18 +180,22 @@ class _MyHomePageState extends State<MyHomePage> {
                     return const SizedBox.shrink();
                   }
 
-                  return const CircularProgressIndicator.adaptive();
-                },
-              ),
-              const SizedBox(height: 8),
-              ValueListenableBuilder(
-                valueListenable: progressNotifier,
-                builder: (_, __, ___) {
                   if (widget.client.connectionStatus?.state ==
                       MqttConnectionState.connected) {
                     return _connectedWidget();
                   }
-                  return const SizedBox.shrink();
+
+                  return const CircularProgressIndicator.adaptive();
+                },
+              ),
+              const SizedBox(height: 4),
+              ValueListenableBuilder(
+                valueListenable: errorMessageNotifier,
+                builder: (_, __, ___) {
+                  return Text(
+                    errorMessageNotifier.value,
+                    style: const TextStyle(color: Colors.red),
+                  );
                 },
               ),
             ],
@@ -231,16 +235,6 @@ class _MyHomePageState extends State<MyHomePage> {
               maxLines: 2,
               onSubmitted: (String message) {
                 sendMessage();
-              },
-            ),
-            const SizedBox(height: 4),
-            ValueListenableBuilder(
-              valueListenable: errorMessageNotifier,
-              builder: (_, __, ___) {
-                return Text(
-                  errorMessageNotifier.value,
-                  style: const TextStyle(color: Colors.red),
-                );
               },
             ),
             const SizedBox(height: 8),
