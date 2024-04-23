@@ -8,14 +8,13 @@ import 'package:nptt/mqtt_npx_client/_exp.dart';
 
 const MQTT_AUTH_USERNAME = "qrorder_server";
 const MQTT_AUTH_PASSWORD = "123456";
-const MQTT_HOST = "wss://157.245.198.209";
+const MQTT_HOST = "157.245.198.209"; // "ws://157.245.198.209";
 const MQTT_PRINTER_NAME = "P80B-202005250001";
 // MQTT_LAST_WILL_TOPIC
 void main() {
-  final client = MqttNpxClient.instance.clientWithPort(MQTT_HOST, '', 8080)
+  final client = MqttNpxClient.instance.client(MQTT_HOST, '')
     ..logging(on: true)
     ..setProtocolV311();
-
   runApp(MyApp(client: client));
 }
 
@@ -89,7 +88,7 @@ class _MyHomePageState extends State<MyHomePage> {
       progressNotifier.value = 0;
     } else {
       connectionNotifier.value = "";
-      progressNotifier.value = 0;
+      progressNotifier.value = 1;
       errorMessageNotifier.value = error;
     }
   }
@@ -109,6 +108,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> sendMessage() async {
     errorMessageNotifier.value = "";
+    FocusScope.of(context).requestFocus(FocusNode());
     final message = messageTxtCtrl.text;
     if (message.isEmpty) return;
 
@@ -120,16 +120,14 @@ class _MyHomePageState extends State<MyHomePage> {
         MqttQos.exactlyOnce,
         payloadBuilder.payload!,
       );
+      messageTxtCtrl.clear();
     }
   }
 
   @override
   void initState() {
     super.initState();
-    widget.client.updates
-        ?.listen((List<MqttReceivedMessage<MqttMessage>> messages) {
-      receivedMessageNotifier.value = messages;
-    });
+
     widget.client.published?.listen((MqttPublishMessage message) {
       if (message.variableHeader?.returnCode ==
           MqttConnectReturnCode.connectionAccepted) {
@@ -176,13 +174,13 @@ class _MyHomePageState extends State<MyHomePage> {
               ValueListenableBuilder(
                 valueListenable: progressNotifier,
                 builder: (_, __, ___) {
-                  if (progressNotifier.value == 0) {
-                    return const SizedBox.shrink();
-                  }
-
                   if (widget.client.connectionStatus?.state ==
                       MqttConnectionState.connected) {
                     return _connectedWidget();
+                  }
+
+                  if (progressNotifier.value == 0) {
+                    return emptyUi;
                   }
 
                   return const CircularProgressIndicator.adaptive();
@@ -247,26 +245,53 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
             ),
             const SizedBox(height: 8),
-            ValueListenableBuilder(
-              valueListenable: receivedMessageNotifier,
-              builder: (_, __, ___) {
-                final List<MqttReceivedMessage<MqttMessage>> messages =
-                    receivedMessageNotifier.value;
-                return Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    physics: const BouncingScrollPhysics(),
-                    itemBuilder: (_, index) => ListTile(
-                      leading: Text("${index + 1}"),
-                      title: Text(messages[index].payload.toString()),
-                    ),
-                    separatorBuilder: (_, __) => const SizedBox(height: 4),
-                    itemCount: messages.length,
-                  ),
-                );
-              },
-            ),
+            _updatedMessages,
           ],
         ),
       );
+
+  Widget get _updatedMessages => StreamBuilder(
+        stream: widget.client.updates,
+        builder: (_, snapshot) {
+          if (snapshot.data is List<MqttReceivedMessage<MqttMessage>>) {
+            final messages =
+                snapshot.data as List<MqttReceivedMessage<MqttMessage>>;
+
+            return Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                physics: const BouncingScrollPhysics(),
+                itemBuilder: (_, index) {
+                  final publishMessage =
+                      messages[index].payload as MqttPublishMessage;
+                  final msg = MqttPublishPayload.bytesToStringAsString(
+                    publishMessage.payload.message,
+                  );
+                  return ListTile(
+                    leading: const Icon(Icons.print),
+                    title: Text(
+                      messages[index].topic,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    subtitle: Text(
+                      msg,
+                      style: const TextStyle(
+                        fontSize: 13,
+                      ),
+                    ),
+                  );
+                },
+                separatorBuilder: (_, __) => const SizedBox(height: 4),
+                itemCount: messages.length,
+              ),
+            );
+          }
+          return emptyUi;
+        },
+      );
 }
+
+const emptyUi = SizedBox.shrink();
